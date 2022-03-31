@@ -98,8 +98,8 @@ class flex_imzML_reader():
     def get_mreg(self):
         for _img in self.imgs:
             if not _img.coreg:
-                if self.check_translation(np.hstack([_img.tf[0:2, 0:2], np.array([[0], [0]])])):
-                    return np.hstack([_img.tf[0:2, 0:2], np.array([[0], [0]])])
+                if self.check_translation(np.hstack([_img.tf[0:2, 0:2], np.array([[-1 * self.mscale[0,0]], [-1 * self.mscale[1,1]]])])):
+                    return np.hstack([_img.tf[0:2, 0:2], np.array([[-1 * self.mscale[0,0]], [-1 * self.mscale[1,1]]])])
                 else:
                     return _img.tf
 
