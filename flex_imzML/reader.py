@@ -111,7 +111,7 @@ class flex_imzML_reader():
         imx, imy = self.get_imzML_max_xy()
         rmx, rmy = self.get_regions_max_xy()
         if (abs(imx - self.transform([rmx], m))[0,0] > tolerance * self.mscale[0,0]) or (
-                abs(imy - self.transform([rmy], m))[1,1] > tolerance * self.mscale[1,1]):
+                abs(imy - self.transform([rmy], m))[0,1] > tolerance * self.mscale[1,1]):
             # in this case we do not need to correct the translation in m just drop it completely
             return False
         else:
