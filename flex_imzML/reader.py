@@ -35,6 +35,11 @@ class flex_imzML_reader():
         self.imgs = self.extract_images(full_affine=full_affine)
         self.regions = self.extract_regions()
         self.mreg = self.get_mreg()
+        # need to have this due to unknown imzML file origin
+        # after finding the transformation matrix use extreme region points to cross check againts
+        # extreme data points of imzML file to get these corrections (done in function check_translation)
+        self.mreg_translation_x_correction = 0
+        self.mreg_translation_y_correction = 0
         self.mscale = np.array([[mscale, 0, 0],
                                 [0, mscale, 0],
                                 [0, 0, 1]])
@@ -93,18 +98,26 @@ class flex_imzML_reader():
     def get_mreg(self):
         for _img in self.imgs:
             if not _img.coreg:
-                if self.drop_translation(np.hstack([_img.tf[0:2, 0:2], np.array([[0], [0]])])):
+                if self.check_translation(np.hstack([_img.tf[0:2, 0:2], np.array([[0], [0]])])):
                     return np.hstack([_img.tf[0:2, 0:2], np.array([[0], [0]])])
                 else:
                     return _img.tf
 
-    def drop_translation(self, m, tolerance=1.5):
+    def check_translation(self, m, tolerance=1.5):
+        # assumption 1: at least the max x / y value of the two extreme points should be the same in imzml and regions
+        # assumption 2: imzML origin is the same as for the intially registered image - so translation should not be req.
+        # imzml has a shift of 1 * scalefactor
+        # it is not perfect but works ok
         imx, imy = self.get_imzML_max_xy()
         rmx, rmy = self.get_regions_max_xy()
-        if (abs(imx - self.transform([rmx], m)).max() > tolerance) or (
-                abs(imy - self.transform([rmy], m)).max() > tolerance):
+        if (abs(imx - self.transform([rmx], m))[0,0] > tolerance * self.mscale[0,0]) or (
+                abs(imy - self.transform([rmy], m))[1,1] > tolerance * self.mscale[1,1]):
+            # in this case we do not need to correct the translation in m just drop it completely
             return False
         else:
+            # here we need to correct the translation
+            self.mreg_translation_x_correction = (self.transform([rmx], m) - imx + 1 * self.mscale[0,0])[0,0]
+            self.mreg_translation_y_correction = (self.transform([rmy], m) - imy + 1 * self.mscale[1,1])[0,1]
             return True
 
     def extract_regions(self, root_xml=None):
