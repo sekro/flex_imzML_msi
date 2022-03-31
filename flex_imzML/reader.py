@@ -32,6 +32,9 @@ class flex_imzML_reader():
             self._p = ImzMLParser(self._imzML_file)
         else:
             raise ValueError("imzML file not found!")
+        self.mscale = np.array([[mscale, 0, 0],
+                                [0, mscale, 0],
+                                [0, 0, 1]])
         self.imgs = self.extract_images(full_affine=full_affine)
         self.regions = self.extract_regions()
         self.mreg = self.get_mreg()
@@ -40,9 +43,6 @@ class flex_imzML_reader():
         # extreme data points of imzML file to get these corrections (done in function check_translation)
         self.mreg_translation_x_correction = 0
         self.mreg_translation_y_correction = 0
-        self.mscale = np.array([[mscale, 0, 0],
-                                [0, mscale, 0],
-                                [0, 0, 1]])
 
     def extract_images(self, root_xml=None, full_affine=True):
         if root_xml is None:
