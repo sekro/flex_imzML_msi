@@ -176,9 +176,9 @@ class flex_imzML_reader():
         _idx_u = None
         _xy = []
         _int = []
-        _unique_x = np.array(list(set(sorted(np.array(p.coordinates)[:, 0]))))
-        _unique_y = np.array(list(set(sorted(np.array(p.coordinates)[:, 1]))))
-        _data_mtx = np.empty((len(_x), len(_y)))
+        _unique_x = np.array(list(set(sorted(np.array(self._p.coordinates)[:, 0]))))
+        _unique_y = np.array(list(set(sorted(np.array(self._p.coordinates)[:, 1]))))
+        _data_mtx = np.empty((len(_unique_x), len(_unique_y)))
         _data_mtx[:] = np.nan
         if normalize is None:
             normalize = self._identity_norm
