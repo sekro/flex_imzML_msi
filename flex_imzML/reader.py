@@ -176,6 +176,10 @@ class flex_imzML_reader():
         _idx_u = None
         _xy = []
         _int = []
+        _unique_x = np.array(list(set(sorted(np.array(p.coordinates)[:, 0]))))
+        _unique_y = np.array(list(set(sorted(np.array(p.coordinates)[:, 1]))))
+        _data_mtx = np.empty((len(_x), len(_y)))
+        _data_mtx[:] = np.nan
         if normalize is None:
             normalize = self._identity_norm
         for idx, (x, y, z) in enumerate(self._p.coordinates):
@@ -185,6 +189,7 @@ class flex_imzML_reader():
                 _mz_u, _idx_u = self.find_nearest(mzs, mz * (1 + interval))
             _xy.append([x, y])
             _int.append(normalize(np.sum(intensities[_idx_l:_idx_u]), intensities))
+            _data_mtx[np.where(_unique_x == x)[0][0], np.where(_unique_y == y)[0][0]] = _int[-1]
             if idx > break_at:
                 print('processing aborted due to break_at={} parameter'.format(break_at))
                 break
@@ -197,24 +202,9 @@ class flex_imzML_reader():
         df['y_scaled'] = tf_a_xy[:, 1]
         intcol = '{} Da +/- {}% Int'.format(mz, 100 * interval)
         df[intcol] = _int
-        return df
-
-    @staticmethod
-    def get_scaled_ms_int_matrix(df, intcol):
-        _x = df['x_scaled'].unique()
-        _y = df['y_scaled'].unique()
-        _cc = []
-        for _xi in sorted(_x):
-            _d = []
-            _s = df[df['x_scaled'] == _xi]
-            for _yi in sorted(_y):
-                _res = _s[_s['y_scaled'] == _yi]
-                if len(_res) == 1:
-                    _d.append(_res[intcol].to_numpy()[0])
-                else:
-                    _d.append(np.nan)
-            _cc.append(pd.Series(data=_d, index=sorted(_y), name=_xi))
-        return pd.concat(_cc, axis=1)
+        return df, pd.DataFrame(_data_mtx.T,
+                                columns=sorted(df['x_scaled'].unique()),
+                                index=sorted(df['y_scaled'].unique()))
 
     def get_imzML_max_xy(self):
         imzml_max_x = [0, 0]
