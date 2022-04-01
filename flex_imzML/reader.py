@@ -166,7 +166,8 @@ class flex_imzML_reader():
             else:
                 _tm = np.dot(self.mreg, self.mscale)
             _imgo = plt.imread(os.path.join(self.base_path, _img.path))
-            _rd['tf_{}'.format(_img.path)] = cv2.warpAffine(_imgo, _tm, (_imgo.shape[1], _imgo.shape[0]))
+            _w, _h = tuple(np.ceil(self.transform([(_imgo.shape[1], _imgo.shape[0])], _tm)).astype(int)[0])
+            _rd['tf_{}'.format(_img.path)] = cv2.warpAffine(_imgo, _tm, (_w, _h))
         return _rd
 
     def get_scaled_msi(self, mz, interval=0.00025, break_at=100000, normalize=None):
