@@ -3,6 +3,7 @@ flex imzML & mis file reader class
 @author: Sebastian Krossa / MR Cancer / MH / ISB / NTNU Trondheim Norway
 sebastian.krossa@ntnu.no
 """
+from dataclasses import dataclass, field
 
 from pyimzml.ImzMLParser import ImzMLParser
 import xml.etree.ElementTree as ET
@@ -12,11 +13,21 @@ import os
 from matplotlib import pyplot as plt
 import numpy as np
 import pandas as pd
-from typing import NamedTuple
+from typing import NamedTuple, List, Dict
 
 RegImage = NamedTuple("RegImage", [('path', str), ('tf', np.array), ('coreg', bool)])
 FlexRegion = NamedTuple("FlexRegion", [('name', str), ('points', np.array)])
 
+
+@dataclass
+class MsiData:
+    x: List[int] = field(default_factory=list)
+    y: List[int]
+    z: List[str]
+    msi: np.array
+    table: pd.DataFrame
+    name: str
+    meta: Dict
 
 class flex_imzML_reader():
     def __init__(self, base_name, base_path, full_affine=True, mscale=5):
@@ -169,6 +180,87 @@ class flex_imzML_reader():
             _w, _h = tuple(np.ceil(self.transform([(_imgo.shape[1], _imgo.shape[0])], _tm)).astype(int)[0])
             _rd['tf_{}'.format(_img.path)] = cv2.warpAffine(_imgo, _tm, (_w, _h))
         return _rd
+
+    @staticmethod
+    def is_inside_cnt(cnt, x, y):
+        if cv2.pointPolygonTest(cnt.round().astype(np.int32), (x, y), True) >= 0:
+            print('pt: ({},{}) inside'.format(x, y))
+            return True
+        else:
+            print('pt: ({},{}) not inside'.format(x, y))
+            return False
+
+    @staticmethod
+    def _use_point(x, y, unique_x, unique_y, cnt):
+        if cnt is None:
+            return x in unique_x and y in unique_y
+        else:
+            return flex_imzML_reader.is_inside_cnt(cnt, x, y)
+
+    def get_msi_data(self, mz_intervals, x_interval=None, y_interval=None, intensity_f=None, norm_f=None, name=None, inside_cnt=None):
+        _mz_int_bounds = {}
+        _msi_data = MsiData()
+        _unique_x = np.array(list(set(sorted(np.array(self._p.coordinates)[:, 0]))))
+        _unique_y = np.array(list(set(sorted(np.array(self._p.coordinates)[:, 1]))))
+        if x_interval is not None:
+            _unique_x = _unique_x[np.where(_unique_x == x_interval[0])[0][0]:np.where(_unique_x == x_interval[1])[0][0] + 1]
+        if y_interval is not None:
+            _unique_y = _unique_y[np.where(_unique_y == y_interval[0])[0][0]:np.where(_unique_y == y_interval[1])[0][0] + 1]
+        if intensity_f is None:
+            intensity_f = np.sum
+        if norm_f is None:
+            norm_f = self._identity_norm
+        if name is None:
+            _data_name = 'msi data {}'.format(self._mis_file)
+        else:
+            _data_name = name
+        _xy = []
+        _index = []
+        _int_cols = []
+        _int_data = []
+        _data_mtxs = []
+        _mz_idx = []
+        for idx, (x, y, z) in enumerate(self._p.coordinates):
+            if flex_imzML_reader._use_point(x, y, _unique_x, _unique_y, inside_cnt):
+                _xy.append([x, y])
+                _index.append(idx)
+                # this step is time intensive
+                mzs, intensities = self._p.getspectrum(idx)
+                _row = []
+                for _mz, _interval in mz_intervals:
+                    if _mz not in _mz_int_bounds:
+                        _mz_int_bounds[_mz] = {}
+                        _data_mtxs.append(np.empty((len(_unique_y), len(_unique_x))))
+                        _data_mtxs[-1][:] = np.nan
+                        _mz_idx.append(_mz)
+                        # find_nearest returns tuple(mz_value, index)
+                        _mz_int_bounds[_mz]['l'] = self.find_nearest(mzs, _mz * (1 - _interval))
+                        _mz_int_bounds[_mz]['u'] = self.find_nearest(mzs, _mz * (1 + _interval))
+                        _int_cols.append('{} Da +/- {}% Int (true range: {} - {} mz)'.format(_mz, 100 * _interval,
+                                                                                             _mz_int_bounds[_mz]['l'][0],
+                                                                                             _mz_int_bounds[_mz]['u'][0]))
+                    _row.append(norm_f(intensity_f(intensities[_mz_int_bounds[_mz]['l'][1]:_mz_int_bounds[_mz]['u'][1]]),
+                                          intensities))
+                    _data_mtxs[_mz_idx.index(_mz)][np.where(_unique_y == y)[0][0], np.where(_unique_x == x)[0][0]] = _row[-1]
+                _int_data.append(_row)
+        a_xy = np.array(_xy)
+        tf_a_xy = self.transform(a_xy, self.mscale)
+        df = pd.DataFrame()
+        df['index'] = _index
+        df['x'] = a_xy[:, 0]
+        df['y'] = a_xy[:, 1]
+        df['x_scaled'] = tf_a_xy[:, 0]
+        df['y_scaled'] = tf_a_xy[:, 1]
+        df.set_index(keys='index', inplace=True)
+        _msi_data.table = pd.concat([df, pd.DataFrame(index=_index, columns=_int_cols, data=_int_data)], axis=1, verify_integrity=True)
+        _msi_data.x = (_unique_x * self.mscale[0,0]).tolist()
+        _msi_data.y = (_unique_y * self.mscale[1,1]).tolist()
+        _msi_data.z = _int_cols
+        _msi_data.msi = np.array(_data_mtxs)
+        _msi_data.meta['normalization function'] = norm_f
+        _msi_data.meta['intensity calc function'] = intensity_f
+        _msi_data.name = _data_name
+        return _msi_data
 
     def get_scaled_msi(self, mz, interval=0.00025, break_at=100000, normalize=None):
         _mz_l = None
