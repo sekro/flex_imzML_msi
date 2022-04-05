@@ -152,7 +152,7 @@ class flex_imzML_reader():
                             max_x_pt = [int(raw_vals[0]), int(raw_vals[1])]
                         if int(raw_vals[1]) > max_y_pt[1]:
                             max_y_pt = [int(raw_vals[0]), int(raw_vals[1])]
-                _ret.append(FlexRegion(area.attrib['Name'], np.array((x, y)).T))
+                _ret.append(FlexRegion(item.attrib['Name'], np.array((x, y)).T))
         return _ret
 
     @staticmethod
