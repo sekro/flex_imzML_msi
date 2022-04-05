@@ -137,21 +137,22 @@ class flex_imzML_reader():
         _ret = []
         max_x_pt = [0, 0]
         max_y_pt = [0, 0]
-        for area in root_xml.iter('Area'):
-            x = []
-            y = []
+        for item in root_xml:
+            if item.tag in ['Area', 'ROI']:
+                x = []
+                y = []
 
-            for child in area:
-                if child.tag == 'Point':
-                    raw_vals = child.text.split(',')
-                    # print(raw_vals)
-                    x.append(int(raw_vals[0]))
-                    y.append(int(raw_vals[1]))
-                    if int(raw_vals[0]) > max_x_pt[0]:
-                        max_x_pt = [int(raw_vals[0]), int(raw_vals[1])]
-                    if int(raw_vals[1]) > max_y_pt[1]:
-                        max_y_pt = [int(raw_vals[0]), int(raw_vals[1])]
-            _ret.append(FlexRegion(area.attrib['Name'], np.array((x, y)).T))
+                for child in item:
+                    if child.tag == 'Point':
+                        raw_vals = child.text.split(',')
+                        # print(raw_vals)
+                        x.append(int(raw_vals[0]))
+                        y.append(int(raw_vals[1]))
+                        if int(raw_vals[0]) > max_x_pt[0]:
+                            max_x_pt = [int(raw_vals[0]), int(raw_vals[1])]
+                        if int(raw_vals[1]) > max_y_pt[1]:
+                            max_y_pt = [int(raw_vals[0]), int(raw_vals[1])]
+                _ret.append(FlexRegion(area.attrib['Name'], np.array((x, y)).T))
         return _ret
 
     @staticmethod
