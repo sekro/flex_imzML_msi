@@ -29,7 +29,8 @@ class MsiData:
     name: str
     meta: Dict
 
-class flex_imzML_reader():
+
+class flexImzMLHandler():
     def __init__(self, base_name, base_path, full_affine=True, mscale=5):
         self._imzML_file = os.path.join(base_path, '{}.imzML'.format(base_name))
         self._mis_file = os.path.join(base_path, '{}.mis'.format(base_name))
@@ -196,7 +197,7 @@ class flex_imzML_reader():
         if cnt is None:
             return x in unique_x and y in unique_y
         else:
-            return flex_imzML_reader.is_inside_cnt(cnt, x, y)
+            return flexImzMLHandler.is_inside_cnt(cnt, x, y)
 
     def get_msi_data(self, mz_intervals, x_interval=None, y_interval=None, intensity_f=None, norm_f=None, name=None, inside_cnt=None):
         _mz_int_bounds = {}
@@ -222,7 +223,7 @@ class flex_imzML_reader():
         _data_mtxs = []
         _mz_idx = []
         for idx, (x, y, z) in enumerate(self._p.coordinates):
-            if flex_imzML_reader._use_point(x, y, _unique_x, _unique_y, inside_cnt):
+            if flexImzMLHandler._use_point(x, y, _unique_x, _unique_y, inside_cnt):
                 _xy.append([x, y])
                 _index.append(idx)
                 # this step is time intensive

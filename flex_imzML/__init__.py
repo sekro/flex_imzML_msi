@@ -1,1 +1,1 @@
-from .reader import flex_imzML_reader
+from .reader import flexImzMLHandler
