@@ -22,12 +22,15 @@ FlexRegion = NamedTuple("FlexRegion", [('name', str), ('points', np.array)])
 @dataclass
 class MsiData:
     x: List[int] = field(default_factory=list)
-    y: List[int]
-    z: List[str]
-    msi: np.array
-    table: pd.DataFrame
-    name: str
-    meta: Dict
+    y: List[int] = field(default_factory=list)
+    z: List[str] = field(default_factory=list)
+    msi: np.array = None
+    spectrum_mean: np.array = None
+    spectrum_sum: np.array = None
+    spectrum_mzs: np.array = None
+    table: pd.DataFrame = None
+    name: str = None
+    meta: Dict = field(default_factory=dict)
 
 
 class flexImzMLHandler():
@@ -294,7 +297,8 @@ class flexImzMLHandler():
         else:
             return flexImzMLHandler.is_inside_cnt(cnt, x, y)
 
-    def get_msi_data(self, mz_intervals, x_interval=None, y_interval=None, intensity_f=None, norm_f=None, name=None, inside_cnt=None):
+    def get_msi_data(self, mz_intervals, x_interval=None, y_interval=None, intensity_f=None, norm_f=None, name=None,
+                     inside_cnt=None, gen_spec=True):
         _mz_int_bounds = {}
         _msi_data = MsiData()
         _unique_x = np.array(list(set(sorted(np.array(self._p.coordinates)[:, 0]))))
@@ -317,12 +321,26 @@ class flexImzMLHandler():
         _int_data = []
         _data_mtxs = []
         _mz_idx = []
+        _int_sum = None
+        _last_mzs = None
+        _int_n = 0
         for idx, (x, y, z) in enumerate(self._p.coordinates):
             if flexImzMLHandler._use_point(x, y, _unique_x, _unique_y, inside_cnt):
                 _xy.append([x, y])
                 _index.append(idx)
                 # this step is time intensive
                 mzs, intensities = self._p.getspectrum(idx)
+                if gen_spec:
+                    if _int_sum is None:
+                        _int_sum = intensities.copy()
+                        _last_mzs = mzs.copy()
+                    else:
+                        _int_sum += intensities.copy()
+                        if not (_last_mzs == mzs).all():
+                            raise RuntimeError(
+                                "mzs not aligned in imzML file - currently not supported for mean & sum spectra generation - run again with gen_spec=False")
+                        _last_mzs = mzs.copy()
+                    _int_n += 1
                 _row = []
                 for _mz, _interval in mz_intervals:
                     if _mz not in _mz_int_bounds:
@@ -357,6 +375,10 @@ class flexImzMLHandler():
         _msi_data.meta['normalization function'] = norm_f
         _msi_data.meta['intensity calc function'] = intensity_f
         _msi_data.name = _data_name
+        if gen_spec:
+            _msi_data.spectrum_mean = _int_sum / _int_n
+            _msi_data.spectrum_mzs = _last_mzs
+            _msi_data.spectrum_sum = _int_sum
         return _msi_data
 
     def get_scaled_msi(self, mz, interval=0.00025, break_at=100000, normalize=None):
