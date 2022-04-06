@@ -15,7 +15,7 @@ import numpy as np
 import pandas as pd
 from typing import NamedTuple, List, Dict
 
-RegImage = NamedTuple("RegImage", [('path', str), ('tf', np.array), ('coreg', bool)])
+RegImage = NamedTuple("RegImage", [('path', str), ('tf', np.array), ('coreg_mis', bool), ('coreg_to', int)])
 FlexRegion = NamedTuple("FlexRegion", [('name', str), ('points', np.array)])
 
 
@@ -86,12 +86,99 @@ class flexImzMLHandler():
             if full_affine:
                 _rl.append(RegImage(_img, cv2.getAffineTransform(np.array(_dat['ps']).astype(np.float32),
                                                                  np.array(_dat['tps']).astype(np.float32)),
-                                    _dat['CoReg']))
+                                    _dat['CoReg']), 0)
             else:
                 _rl.append(RegImage(_img, cv2.estimateAffinePartial2D(np.array(_dat['ps']).astype(np.float32),
                                                                       np.array(_dat['tps']).astype(np.float32))[0],
-                                    _dat['CoReg']))
+                                    _dat['CoReg']), 0)
         return _rl
+
+    def auto_register_img(self, moving_img_path, target_img_path=None, rigid=True, rotation=False, warn_angle_deg=1,
+                          min_match_count=10, flann_index_kdtree=0, flann_trees=5, flann_checks=50):
+        """
+        co-registers two images and returns the moving image warped to fit target_img and the respective transform matrix
+        Script is very close to OpenCV2 image co-registration tutorial:
+        https://opencv-python-tutroals.readthedocs.io/en/latest/py_tutorials/py_feature2d/py_feature_homography/py_feature_homography.html
+        only addition/change here: rigid transform & no rotation option
+        :param moving_img: image supposed to move
+        :param target_img: reference / target image, default None -> uses the existing coregistered image from mis file
+        :param rigid: if true only tranlation, rotation, and uniform scale
+        :param rotation: if false no rotation
+        :param warn_angle_deg: cuttoff for warning check if supposed rotation angle bigger in case of rotation=False
+        :param min_match_count: min good feature matches
+        :param flann_index_kdtree: define algorithm for Fast Library for Approximate Nearest Neighbors - see FLANN doc
+        :return: moved/transformed image in target image "space" & transformation matrix
+        """
+        target_img = None
+        registered_to_internal_img = 0
+        if target_img_path is None:
+            for _idx, _img in enumerate(self.imgs):
+                if _img.coreg_mis:
+                    target_img = cv2.imread(os.path.join(self.base_path, _img.path), cv2.IMREAD_UNCHANGED)
+                    registered_to_internal_img = _idx
+            if target_img is None:
+                # if this is still true we have a problem...
+                raise RuntimeError('No coregistered image associated with this object - please provide a target image')
+        else:
+            target_img = cv2.imread(target_img_path, cv2.IMREAD_UNCHANGED)
+        moving_img = cv2.imread(moving_img_path, cv2.IMREAD_UNCHANGED)
+        if len(target_img.shape) > 2:
+            target_img = cv2.cvtColor(target_img, cv2.COLOR_BGR2GRAY)
+        if len(moving_img.shape) > 2:
+            moving_img_gray = cv2.cvtColor(moving_img, cv2.COLOR_BGR2GRAY)
+        else:
+            moving_img_gray = moving_img
+        height, width = target_img.shape
+
+        # Initiate SIFT detector
+        sift = cv2.SIFT_create()
+
+        # find the keypoints and descriptors with SIFT
+        kp1, des1 = sift.detectAndCompute(moving_img_gray, None)
+        kp2, des2 = sift.detectAndCompute(target_img, None)
+
+        index_params = dict(algorithm=flann_index_kdtree, trees=flann_trees)
+        search_params = dict(checks=flann_checks)
+
+        flann = cv2.FlannBasedMatcher(index_params, search_params)
+
+        matches = flann.knnMatch(des1, des2, k=2)
+
+        # store all the good matches as per Lowe's ratio test.
+        good = []
+        for m, n in matches:
+            if m.distance < 0.7 * n.distance:
+                good.append(m)
+
+        if len(good) > min_match_count:
+            src_pts = np.float32([kp1[m.queryIdx].pt for m in good]).reshape(-1, 1, 2)
+            dst_pts = np.float32([kp2[m.trainIdx].pt for m in good]).reshape(-1, 1, 2)
+
+            if rigid:
+                transformation_matrix, mask = cv2.estimateAffinePartial2D(src_pts, dst_pts, method=cv2.RANSAC,
+                                                                          ransacReprojThreshold=5.0)
+                transformation_matrix = np.vstack([transformation_matrix, [0, 0, 1]])
+                if not rotation:
+                    angle = np.arcsin(transformation_matrix[0, 1])
+                    print('Current rotation {} degrees'.format(np.rad2deg(angle)))
+                    if abs(np.rad2deg(angle)) > warn_angle_deg:
+                        print('Warning: calculated rotation > {} degrees!'.format(warn_angle_deg))
+                    pure_scale = transformation_matrix[0, 0] / np.cos(angle)
+                    transformation_matrix[0, 0] = pure_scale
+                    transformation_matrix[0, 1] = 0
+                    transformation_matrix[1, 0] = 0
+                    transformation_matrix[1, 1] = pure_scale
+            else:
+                transformation_matrix, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5.0)
+            transformed_img = cv2.warpPerspective(moving_img, transformation_matrix, (width, height))
+            print('Transformation matrix: {}'.format(transformation_matrix))
+            if registered_to_internal_img > 0:
+                self.imgs.append(RegImage(moving_img_path, transformation_matrix, False, registered_to_internal_img))
+        else:
+            print("Not enough matches are found - {}/{}".format(len(good), min_match_count))
+            matchesMask = None
+            transformed_img, transformation_matrix = None, None
+        return transformed_img, transformation_matrix
 
     @staticmethod
     def proc_child(c, _d, _img):
@@ -109,7 +196,7 @@ class flexImzMLHandler():
 
     def get_mreg(self):
         for _img in self.imgs:
-            if not _img.coreg:
+            if not _img.coreg_mis:
                 if self.check_translation(np.hstack([_img.tf[0:2, 0:2], np.array([[-1 * self.mscale[0,0]], [-1 * self.mscale[1,1]]])])):
                     return np.hstack([_img.tf[0:2, 0:2], np.array([[-1 * self.mscale[0,0]], [-1 * self.mscale[1,1]]])])
                 else:
@@ -173,12 +260,20 @@ class flexImzMLHandler():
     def get_transformed_images(self):
         _rd = {}
         for _img in self.imgs:
-            if _img.coreg:
+            _img_p = None
+            if _img.coreg_mis:
                 _tm = np.dot(np.dot(np.vstack([self.mreg, np.array([0, 0, 1])]), self.mscale),
                              np.vstack([cv2.invertAffineTransform(_img.tf), np.array([0, 0, 1])]))[:2, :]
+            elif _img.coreg_to > 0:
+                _tm = np.dot(np.dot(np.dot(np.vstack([self.mreg, np.array([0, 0, 1])]), self.mscale),
+                                    np.vstack([cv2.invertAffineTransform(self.imgs[_img.coreg_to].tf),
+                                               np.array([0, 0, 1])])), _img.tf)
+                _img_p = _img.path
             else:
                 _tm = np.dot(self.mreg, self.mscale)
-            _imgo = plt.imread(os.path.join(self.base_path, _img.path))
+            if _img_p is None:
+                _img_p = os.path.join(self.base_path, _img.path)
+            _imgo = plt.imread(_img_p)
             _w, _h = tuple(np.ceil(self.transform([(_imgo.shape[1], _imgo.shape[0])], _tm)).astype(int)[0])
             _rd['tf_{}'.format(_img.path)] = cv2.warpAffine(_imgo, _tm, (_w, _h))
         return _rd
