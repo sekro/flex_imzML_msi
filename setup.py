@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setuptools.setup(
     name="flex_imzML-sekro",
-    version="2022.0.11",
+    version="2022.0.12",
     author="Sebastian Krossa",
     author_email="sebastian.krossa@ntnu.no",
     description="A set of tools for working with MS imaging data",

@@ -274,6 +274,9 @@ class flexImzMLHandler():
                 _img_p = _img.path
                 _target_img = cv2.imread(os.path.join(self.base_path, self.imgs[_img.coreg_to].path),
                                          cv2.IMREAD_UNCHANGED)
+                _ttm = np.dot(np.dot(np.vstack([self.mreg, np.array([0, 0, 1])]), self.mscale),
+                             np.vstack([cv2.invertAffineTransform(self.imgs[_img.coreg_to].tf),
+                                        np.array([0, 0, 1])]))[:2, :]
             else:
                 _tm = np.dot(self.mreg, self.mscale)
             if _img_p is None:
@@ -281,7 +284,8 @@ class flexImzMLHandler():
             _imgo = plt.imread(_img_p)
             if _target_img is None:
                 _target_img = _imgo
-            _w, _h = tuple(np.ceil(self.transform([(_target_img.shape[1], _target_img.shape[0])], _tm)).astype(int)[0])
+                _ttm = _tm
+            _w, _h = tuple(np.ceil(self.transform([(_target_img.shape[1], _target_img.shape[0])], _ttm)).astype(int)[0])
             _rd['tf_{}'.format(_img.path)] = cv2.warpAffine(_imgo, _tm, (_w, _h))
         return _rd
 
