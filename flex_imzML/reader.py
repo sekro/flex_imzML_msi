@@ -84,16 +84,15 @@ class flexImzMLHandler():
             _, _min_y = -1 * (np.array(_d[_base_img]['tps']).max(axis=0))
             for i, _tps in enumerate(_d[_base_img]['tps']):
                 _d[_base_img]['tps'][i] = [(_tps[0] - _min_x) / _r0, (-1 * _tps[1] - _min_y) / _r1]
-        print(_d)
         for _img, _dat in _d.items():
             if full_affine:
                 _rl.append(RegImage(_img, cv2.getAffineTransform(np.array(_dat['ps']).astype(np.float32),
                                                                  np.array(_dat['tps']).astype(np.float32)),
-                                    _dat['CoReg']), 0)
+                                    _dat['CoReg'], 0))
             else:
                 _rl.append(RegImage(_img, cv2.estimateAffinePartial2D(np.array(_dat['ps']).astype(np.float32),
                                                                       np.array(_dat['tps']).astype(np.float32))[0],
-                                    _dat['CoReg']), 0)
+                                    _dat['CoReg'], 0))
         return _rl
 
     def auto_register_img(self, moving_img_path, target_img_path=None, rigid=True, rotation=False, warn_angle_deg=1,
@@ -264,30 +263,33 @@ class flexImzMLHandler():
         _rd = {}
         for _img in self.imgs:
             _img_p = None
+            _target_img = None
             if _img.coreg_mis:
                 _tm = np.dot(np.dot(np.vstack([self.mreg, np.array([0, 0, 1])]), self.mscale),
                              np.vstack([cv2.invertAffineTransform(_img.tf), np.array([0, 0, 1])]))[:2, :]
             elif _img.coreg_to > 0:
                 _tm = np.dot(np.dot(np.dot(np.vstack([self.mreg, np.array([0, 0, 1])]), self.mscale),
                                     np.vstack([cv2.invertAffineTransform(self.imgs[_img.coreg_to].tf),
-                                               np.array([0, 0, 1])])), _img.tf)
+                                               np.array([0, 0, 1])])), _img.tf)[:2, :]
                 _img_p = _img.path
+                _target_img = cv2.imread(os.path.join(self.base_path, self.imgs[_img.coreg_to].path),
+                                         cv2.IMREAD_UNCHANGED)
             else:
                 _tm = np.dot(self.mreg, self.mscale)
             if _img_p is None:
                 _img_p = os.path.join(self.base_path, _img.path)
             _imgo = plt.imread(_img_p)
-            _w, _h = tuple(np.ceil(self.transform([(_imgo.shape[1], _imgo.shape[0])], _tm)).astype(int)[0])
+            if _target_img is None:
+                _target_img = _imgo
+            _w, _h = tuple(np.ceil(self.transform([(_target_img.shape[1], _target_img.shape[0])], _tm)).astype(int)[0])
             _rd['tf_{}'.format(_img.path)] = cv2.warpAffine(_imgo, _tm, (_w, _h))
         return _rd
 
     @staticmethod
     def is_inside_cnt(cnt, x, y):
         if cv2.pointPolygonTest(cnt.round().astype(np.int32), (x, y), True) >= 0:
-            print('pt: ({},{}) inside'.format(x, y))
             return True
         else:
-            print('pt: ({},{}) not inside'.format(x, y))
             return False
 
     @staticmethod
