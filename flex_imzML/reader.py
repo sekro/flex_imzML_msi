@@ -463,3 +463,36 @@ class flexImzMLHandler():
         array = np.asarray(array)
         idx = (np.abs(array - value)).argmin()
         return array[idx], idx
+
+    @staticmethod
+    def simplify_contour(cnt, simplify_factor=0.001):
+        cnt = np.round(cnt).astype(int)
+        return cv2.approxPolyDP(cnt, simplify_factor * cv2.arcLength(cnt, True), True)[:, 0, :]
+
+    def inject_contour_into_mis(self, cnt, name, color='#000000', mtf=None, simplify=True, simplify_factor=0.001, save=True):
+        roi = ET.SubElement(self._root, 'ROI')
+        roi.set('Type', '3')
+        roi.set('Name', name)
+        roi.set('Enabled', '0')
+        roi.set('ShowSpectra', '0')
+        roi.set('SpectrumColor', color)
+        if mtf is not None:
+            if mtf == 'auto':
+                cnt = self.transform(cnt, np.linalg.inv(np.vstack([np.dot(self.mreg, self.mscale), np.array([0, 0, 1])])))
+            else:
+                cnt = self.transform(cnt, mtf)
+        cnt = np.round(cnt).astype(int)
+        if simplify:
+            cnt = flexImzMLHandler.simplify_contour(cnt=cnt, simplify_factor=simplify_factor)
+        for x, y in cnt:
+            _p = ET.SubElement(roi, 'Point')
+            _p.text = '{},{}'.format(x, y)
+        if save:
+            self.save_mis_file()
+        return roi, cnt
+
+    def save_mis_file(self, filename_mod='_mod'):
+        self._tree.write('{}'.format(filename_mod).join(os.path.splitext(self._mis_file)))
+        return None
+
+
