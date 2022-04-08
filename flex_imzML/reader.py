@@ -298,7 +298,7 @@ class flexImzMLHandler():
             return flexImzMLHandler.is_inside_cnt(cnt, x, y)
 
     def get_msi_data(self, mz_intervals, x_interval=None, y_interval=None, intensity_f=None, norm_f=None, name=None,
-                     inside_cnt=None, gen_spec=True):
+                     inside_cnt=None, gen_spec=True, baseline_f=None, smooth_f=None):
         _mz_int_bounds = {}
         _msi_data = MsiData()
         _unique_x = np.array(list(set(sorted(np.array(self._p.coordinates)[:, 0]))))
@@ -330,12 +330,19 @@ class flexImzMLHandler():
                 _index.append(idx)
                 # this step is time intensive
                 mzs, intensities = self._p.getspectrum(idx)
+                # originals are read-only - so we make just one copy here to avoid issues with some functions
+                mzs = mzs.copy()
+                intensities = intensities.copy()
+                if smooth_f is not None:
+                    intensities = smooth_f(intensities)
+                if baseline_f is not None:
+                    intensities = baseline_f(intensities)
                 if gen_spec:
                     if _int_sum is None:
-                        _int_sum = intensities.copy()
-                        _last_mzs = mzs.copy()
+                        _int_sum = intensities
+                        _last_mzs = mzs
                     else:
-                        _int_sum += intensities.copy()
+                        _int_sum += intensities
                         if not (_last_mzs == mzs).all():
                             raise RuntimeError(
                                 "mzs not aligned in imzML file - currently not supported for mean & sum spectra generation - run again with gen_spec=False")
