@@ -297,11 +297,23 @@ class flexImzMLHandler():
             return False
 
     @staticmethod
+    def is_inside_cnts(cnts, x, y):
+        if isinstance(cnts, list):
+            for _c in cnts:
+                if flexImzMLHandler.is_inside_cnt(_c, x, y):
+                    return True
+            return False
+        elif isinstance(cnts, np.ndarray):
+            return flexImzMLHandler.is_inside_cnt(cnts, x, y)
+        else:
+            return False
+
+    @staticmethod
     def _use_point(x, y, unique_x, unique_y, cnt):
         if cnt is None:
             return x in unique_x and y in unique_y
         else:
-            return flexImzMLHandler.is_inside_cnt(cnt, x, y)
+            return flexImzMLHandler.is_inside_cnts(cnt, x, y)
 
     def get_msi_data(self, mz_intervals, x_interval=None, y_interval=None, intensity_f=None, norm_f=None, name=None,
                      inside_cnt=None, gen_spec=True, baseline_f=None, smooth_f=None):
